@@ -15,7 +15,8 @@ class EmbeddingsManager:
         self.embeddings = HuggingFaceEmbeddings(
             model_name="all-MiniLM-L6-v2",
             model_kwargs={"device": "cpu"},
-            encode_kwargs={"batch_size": 64, "normalize_embeddings": True}
+            encode_kwargs={"batch_size": 64, "normalize_embeddings": True},
+            cache_folder="model_cache"  # ✅ caches model locally
         )
         print("✅ Embedding model loaded!")
 
@@ -24,14 +25,10 @@ class EmbeddingsManager:
 
     def create_vectorstore(self, chunks: List[Document]) -> Chroma:
         if not chunks:
-            print("❌ No chunks to create vectorstore!")
             return None
-
-        # Always delete old one before creating new
         self.delete_vectorstore()
         os.makedirs(self.persist_directory, exist_ok=True)
-
-        print(f"\n🔄 Creating embeddings for {len(chunks)} chunks...")
+        print(f"🔄 Creating embeddings for {len(chunks)} chunks...")
         client = self._get_client()
         vectorstore = Chroma.from_documents(
             documents=chunks,

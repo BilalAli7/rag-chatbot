@@ -5,7 +5,7 @@ from embeddings_manager import EmbeddingsManager
 from chat_engine import ChatEngine
 
 st.set_page_config(
-    page_title="Bilal RAG Chatbot",
+    page_title="RAG Chatbot with Ollama",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -19,15 +19,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<h1 class="main-header">🤖 RAG Chatbot</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Chat with Your Documents using Grok Llama-3.1</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Chat with Your Documents using Groq</p>', unsafe_allow_html=True)
 
 docs_folder = "documents"
 os.makedirs(docs_folder, exist_ok=True)
 
+# ✅ Cache the embeddings manager so model loads only once
+@st.cache_resource(show_spinner="Loading embedding model...")
+def get_embeddings_manager():
+    return EmbeddingsManager()
+
+# ✅ Cache the vectorstore
+@st.cache_resource(show_spinner="Loading vector store...")
+def load_vectorstore(_em):
+    return _em.load_vectorstore()
+
 with st.sidebar:
     st.header("📁 Document Management")
 
-    # File uploader — saves immediately to disk
     uploaded_files = st.file_uploader(
         "Upload PDF or TXT files",
         type=["pdf", "txt"],
@@ -41,7 +50,6 @@ with st.sidebar:
                 f.write(uploaded_file.getbuffer())
         st.success(f"✅ {len(uploaded_files)} file(s) saved!")
 
-    # Show files currently on disk
     existing_files = [f for f in os.listdir(docs_folder) if f.endswith(('.pdf', '.txt'))]
     if existing_files:
         st.success(f"✅ {len(existing_files)} document(s) ready")
@@ -57,7 +65,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Process documents button — reads from disk
     if st.button("🔄 Process Documents", use_container_width=True):
         disk_files = [f for f in os.listdir(docs_folder) if f.endswith(('.pdf', '.txt'))]
         if not disk_files:
@@ -71,13 +78,15 @@ with st.sidebar:
                     if not chunks:
                         st.error("❌ Documents found but no content could be extracted!")
                     else:
-                        em = EmbeddingsManager()
+                        em = get_embeddings_manager()
                         em.delete_vectorstore()
                         vectorstore = em.create_vectorstore(chunks)
 
                         if vectorstore:
                             st.success(f"✅ Processed {len(chunks)} chunks!")
                             st.balloons()
+                            # Clear caches so vectorstore reloads
+                            load_vectorstore.clear()
                             if 'chat_engine' in st.session_state:
                                 del st.session_state.chat_engine
                         else:
@@ -98,26 +107,25 @@ with st.sidebar:
     st.markdown("---")
 
     with st.expander("ℹ️ Model Info"):
-        st.write("**Model:** Llama-3.1")
-        st.write("**Provider:** Grok")
+        st.write("**Model:** Llama 3.1")
+        st.write("**Provider:** Groq")
         st.write("**Cost:** 100% FREE")
-        st.write("**Privacy:** Local only")
+        st.write("**Privacy:** Local embeddings")
 
 # Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Initialize chat engine
+# Initialize chat engine with caching
 if "chat_engine" not in st.session_state:
     try:
-        with st.spinner("Loading AI model..."):
-            em = EmbeddingsManager()
-            vectorstore = em.load_vectorstore()
-            if vectorstore:
-                st.session_state.chat_engine = ChatEngine(vectorstore)
-                st.success("✅ AI ready!")
-            else:
-                st.info("📄 Upload and process documents to begin.")
+        em = get_embeddings_manager()
+        vectorstore = load_vectorstore(em)
+        if vectorstore:
+            st.session_state.chat_engine = ChatEngine(vectorstore)
+            st.success("✅ AI ready!")
+        else:
+            st.info("📄 Upload and process documents to begin.")
     except Exception as e:
         st.error(f"❌ Error loading model: {str(e)}")
 
@@ -162,6 +170,6 @@ if prompt := st.chat_input("Ask me anything about your documents..."):
 
 st.markdown("---")
 st.markdown(
-    "<p style='text-align: center; color: #666;'>Powered by Grok Llama-3.1 🤖 | Built with LangChain & Streamlit</p>",
+    "<p style='text-align: center; color: #666;'>Powered by Groq 🤖 | Built with LangChain & Streamlit</p>",
     unsafe_allow_html=True
 )
