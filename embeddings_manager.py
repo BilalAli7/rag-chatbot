@@ -1,11 +1,11 @@
 import os
 import shutil
 import time
+import pickle
 from typing import List
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
-import chromadb
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import FAISS
 
 
 class EmbeddingsManager:
@@ -16,39 +16,31 @@ class EmbeddingsManager:
             model_name="all-MiniLM-L6-v2",
             model_kwargs={"device": "cpu"},
             encode_kwargs={"batch_size": 64, "normalize_embeddings": True},
-            cache_folder="model_cache"  # ✅ caches model locally
+            cache_folder="model_cache"
         )
         print("✅ Embedding model loaded!")
 
-    def _get_client(self):
-        return chromadb.PersistentClient(path=self.persist_directory)
-
-    def create_vectorstore(self, chunks: List[Document]) -> Chroma:
+    def create_vectorstore(self, chunks: List[Document]) -> FAISS:
         if not chunks:
+            print("❌ No chunks to create vectorstore!")
             return None
         self.delete_vectorstore()
         os.makedirs(self.persist_directory, exist_ok=True)
         print(f"🔄 Creating embeddings for {len(chunks)} chunks...")
-        client = self._get_client()
-        vectorstore = Chroma.from_documents(
-            documents=chunks,
-            embedding=self.embeddings,
-            client=client,
-            collection_name="documents"
-        )
+        vectorstore = FAISS.from_documents(chunks, self.embeddings)
+        vectorstore.save_local(self.persist_directory)
         print("✅ Vector store created!")
         return vectorstore
 
-    def load_vectorstore(self) -> Chroma:
+    def load_vectorstore(self) -> FAISS:
         if not os.path.exists(self.persist_directory):
             return None
         try:
             print("📂 Loading existing vector store...")
-            client = self._get_client()
-            vectorstore = Chroma(
-                client=client,
-                collection_name="documents",
-                embedding_function=self.embeddings
+            vectorstore = FAISS.load_local(
+                self.persist_directory,
+                self.embeddings,
+                allow_dangerous_deserialization=True
             )
             print("✅ Vector store loaded!")
             return vectorstore
